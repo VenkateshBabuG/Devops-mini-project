@@ -9,9 +9,13 @@ permissions:
   contents: read
   packages: write
 
+env:
+  IMAGE_NAME: devops-mini
+
 jobs:
   build-test-push:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,6 +36,16 @@ jobs:
           bandit -q -r app || true
           pytest -q
 
+      - name: Set image coordinates
+        id: img
+        run: |
+          OWNER_LC=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')
+          echo "owner_lc=${OWNER_LC}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${OWNER_LC}/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Enable Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
@@ -39,21 +53,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build & push image to GHCR
-        env:
-          OWNER_LC: ${{ github.repository_owner }}
-          SHA_TAG: ${{ github.sha }}
-        run: |
-          OWNER_LC="${OWNER_LC,,}"   # lowercase
-          IMAGE="ghcr.io/${OWNER_LC}/devops-mini"
-          SHORT="${SHA_TAG::7}"
-
-          echo "Building $IMAGE:$SHORT"
-          docker build -t "${IMAGE}:${SHORT}" .
-
-          echo "Pushing $IMAGE:$SHORT"
-          docker push "${IMAGE}:${SHORT}"
-
-          echo "Tagging & pushing latest"
-          docker tag "${IMAGE}:${SHORT}" "${IMAGE}:latest"
-          docker push "${IMAGE}:latest"
+      - name: Build & push (sha + latest)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ steps.img.outputs.image }}:${{ github.sha }}
+            ${{ steps.img.outputs.image }}:latest
