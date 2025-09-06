@@ -28,4 +28,29 @@ jobs:
           pip install pytest bandit
 
       - name: Run tests
-        run: pytest app/tests -v
+        run: |
+          bandit -q -r app || true
+          pytest -q
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push image to GHCR
+        run: |
+          OWNER_LC="${GITHUB_REPOSITORY_OWNER,,}"   # lowercase username/org
+          IMAGE="ghcr.io/${OWNER_LC}/devops-mini"
+          SHA_TAG="${GITHUB_SHA::7}"
+
+          echo "Building $IMAGE:$SHA_TAG"
+          docker build -t "${IMAGE}:${SHA_TAG}" .
+
+          echo "Pushing $IMAGE:$SHA_TAG"
+          docker push "${IMAGE}:${SHA_TAG}"
+
+          echo "Tagging and pushing latest"
+          docker tag "${IMAGE}:${SHA_TAG}" "${IMAGE}:latest"
+          docker push "${IMAGE}:latest"
